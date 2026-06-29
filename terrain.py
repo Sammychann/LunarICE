@@ -226,60 +226,42 @@ def compute_illumination(dem, sun_elevation_deg, sun_azimuth_deg,
     np.ndarray, shape (rows, cols), dtype bool
         ``True`` where the pixel is illuminated, ``False`` where shadowed.
     """
+    from scipy.ndimage import rotate
+    
     rows, cols = dem.shape
-    sun_elev_rad = np.radians(sun_elevation_deg)
-    sun_az_rad = np.radians(sun_azimuth_deg)
-
-    # Direction *towards* the sun (unit vector in pixel coordinates)
-    # Azimuth 0=N → dy negative (up in array)
-    dx = np.sin(sun_az_rad)   # east component (col direction)
-    dy = -np.cos(sun_az_rad)  # north component (row direction, -ve = up)
-
-    shadow = np.zeros((rows, cols), dtype=bool)
-
-    # Maximum trace distance in pixels
-    max_dist = int(np.sqrt(rows ** 2 + cols ** 2))
-
-    tan_elev = np.tan(sun_elev_rad)
-
-    for step in range(1, max_dist + 1):
-        # Pixel offsets towards the sun
-        shift_col = int(round(dx * step))
-        shift_row = int(round(dy * step))
-
-        # Horizontal distance in metres
-        horiz_dist = step * pixel_size
-
-        # Height that the ray has risen at this distance
-        ray_height = horiz_dist * tan_elev
-
-        # Determine overlapping region after shift
-        src_r_start = max(0, -shift_row)
-        src_r_end = min(rows, rows - shift_row)
-        src_c_start = max(0, -shift_col)
-        src_c_end = min(cols, cols - shift_col)
-
-        dst_r_start = max(0, shift_row)
-        dst_r_end = min(rows, rows + shift_row)
-        dst_c_start = max(0, shift_col)
-        dst_c_end = min(cols, cols + shift_col)
-
-        # Ensure valid slice dimensions
-        h = min(src_r_end - src_r_start, dst_r_end - dst_r_start)
-        w = min(src_c_end - src_c_start, dst_c_end - dst_c_start)
-        if h <= 0 or w <= 0:
-            break
-
-        # Compare: terrain at shifted location vs. origin + ray height
-        terrain_shifted = dem[dst_r_start:dst_r_start + h,
-                              dst_c_start:dst_c_start + w]
-        terrain_origin = dem[src_r_start:src_r_start + h,
-                             src_c_start:src_c_start + w]
-
-        blocked = terrain_shifted > (terrain_origin + ray_height)
-        shadow[src_r_start:src_r_start + h,
-               src_c_start:src_c_start + w] |= blocked
-
+    tan_elev = np.tan(np.radians(sun_elevation_deg))
+    
+    # 1. Rotate DEM so sun is coming from the left (West)
+    # Standard azimuth: 0=N, 90=E. Image coords: row 0 is N, col 0 is W.
+    # We want sun at West, so rotate by (270 - azimuth)
+    angle = 270.0 - sun_azimuth_deg
+    dem_rot = rotate(dem, angle, reshape=True, mode='nearest')
+    
+    # 2. Distance from left edge
+    cols_rot = dem_rot.shape[1]
+    x_coords = np.arange(cols_rot) * pixel_size
+    
+    # 3. Effective height: actual height minus the drop of the sun's ray
+    H_eff = dem_rot - x_coords[np.newaxis, :] * tan_elev
+    
+    # 4. Sweep from left to right to find maximum blocking height
+    H_max = np.maximum.accumulate(H_eff, axis=1)
+    
+    # 5. Shadowed if effective height is less than max encountered
+    shadow_rot = H_eff < (H_max - 1e-4)
+    
+    # 6. Rotate back to original orientation
+    shadow_full = rotate(shadow_rot, -angle, reshape=False, order=0)
+    
+    # 7. Crop back to original exact shape
+    r_center = shadow_full.shape[0] / 2.0
+    c_center = shadow_full.shape[1] / 2.0
+    
+    r_start = int(round(r_center - rows / 2.0))
+    c_start = int(round(c_center - cols / 2.0))
+    
+    shadow = shadow_full[r_start:r_start + rows, c_start:c_start + cols]
+    
     return ~shadow
 
 

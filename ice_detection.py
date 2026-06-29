@@ -138,10 +138,13 @@ def gmm_ice_detection(feature_stack, n_clusters=None):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_valid)
 
-    # Fit GMM
+    # Fit GMM on a sub-sample to save memory/time
+    n_samples = min(100000, len(X_scaled))
+    idx = np.random.choice(len(X_scaled), n_samples, replace=False)
+    
     gmm = GaussianMixture(n_components=n_clusters, random_state=42,
                            covariance_type='full', max_iter=300)
-    gmm.fit(X_scaled)
+    gmm.fit(X_scaled[idx])
 
     # Cluster labels & posterior probabilities
     labels_valid = gmm.predict(X_scaled)
