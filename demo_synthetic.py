@@ -372,8 +372,8 @@ def run_demo():
             stokes_L['S3'], stokes_L['S4']
         )
 
-        # CPR = (S1 - S2) / (S1 + S2)
-        CPR_L = np.abs((S1 - S2) / (S1 + S2 + 1e-10))
+        # CPR = (S1 - S4) / (S1 + S4)
+        CPR_L = np.abs((S1 - S4) / (S1 + S4 + 1e-10))
         # DOP = sqrt(S2^2 + S3^2 + S4^2) / S1
         DOP_L = np.sqrt(S2**2 + S3**2 + S4**2) / (S1 + 1e-10)
 
@@ -381,7 +381,7 @@ def run_demo():
             stokes_S['S1'], stokes_S['S2'],
             stokes_S['S3'], stokes_S['S4']
         )
-        CPR_S = np.abs((S1s - S2s) / (S1s + S2s + 1e-10))
+        CPR_S = np.abs((S1s - S4s) / (S1s + S4s + 1e-10))
 
         print(f"  CPR_L range: [{CPR_L.min():.3f}, {CPR_L.max():.3f}]")
         print(f"  DOP_L range: [{DOP_L.min():.3f}, {DOP_L.max():.3f}]")
@@ -516,24 +516,28 @@ def run_demo():
             print(f"  {s['label']}: row={s['row']}, col={s['col']}, "
                   f"score={s['score']:.3f}")
 
-        # --- Rover Traverse Path (simplified A* inline) ---
-        print("[DEMO] Planning rover traverse (simplified)...")
+        # --- Rover Traverse Path (with ROA Memory Planner) ---
+        print("[DEMO] Planning rover traverse (ROA Memory Planner)...")
         start = (best_sites[0]['row'], best_sites[0]['col'])
         goal = ice_center
 
-        # Simple straight-line path with waypoints
-        n_waypoints = config.NSGA2_N_WAYPOINTS + 2
-        path_rows = np.linspace(start[0], goal[0], n_waypoints).astype(int)
-        path_cols = np.linspace(start[1], goal[1], n_waypoints).astype(int)
-        path = np.column_stack([path_rows, path_cols])
-
-        # Compute path metrics
-        diffs = np.diff(path, axis=0) * pixel_size
+        from BAHood.roa import MemoryAugmentedPlanner
+        planner = MemoryAugmentedPlanner(
+            slope, hazard, illumination, dem, pixel_size=pixel_size
+        )
+        traverse_results = planner.plan(start, goal)
+        path = traverse_results['best_path']
+        roa_mask = traverse_results['roa_mask']
+        
+        # Calculate distance (since energy profile is usually populated if NSGA-II ran)
+        path_arr = np.array(path)
+        diffs = np.diff(path_arr, axis=0) * pixel_size
         segment_dists = np.sqrt(diffs[:, 0]**2 + diffs[:, 1]**2)
         total_distance = segment_dists.sum()
         travel_time_hours = total_distance / config.ROVER_SPEED / 3600.0
 
         results['path'] = path
+        results['roa_mask'] = roa_mask
         results['total_distance'] = total_distance
         results['travel_time_hours'] = travel_time_hours
         print(f"  Path waypoints: {len(path)}")
@@ -661,8 +665,8 @@ def run_demo():
         print("[VIZ 10/11] Dual-frequency analysis...")
         plot_dual_frequency(CPR_L, CPR_S)
 
-        print("[VIZ 11/11] Summary figure...")
-        generate_summary_figure(ice_prob, hazard, path, volume_results)
+        print("[VIZ 12/12] Generating master summary figure...")
+        generate_summary_figure(ice_prob, hazard, path, volume_results, roa_mask=roa_mask)
 
         # Try MCMC corner plot (may need corner package)
         try:

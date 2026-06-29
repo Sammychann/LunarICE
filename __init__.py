@@ -16,6 +16,7 @@ Modules:
     terrain             - Slope, roughness, illumination, hazard
     landing_site        - Multi-criteria landing site selection
     traverse            - NSGA-II rover path optimization
+    roa                 - Region of Attraction and path caching
     volume_estimation   - Bayesian MCMC ice volume estimation
     visualization       - All plotting and figure generation
     demo_synthetic      - Synthetic data generation for testing

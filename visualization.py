@@ -14,9 +14,6 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for saving
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from matplotlib import cm
-from mpl_toolkits.mplot3d import Axes3D
 
 from . import config
 
@@ -494,6 +491,46 @@ def plot_traverse_path(path, dem, hazard_map=None, ice_prob=None,
     return fig
 
 
+def plot_roa(roa_mask, dem=None, hazard_map=None,
+             title='Region of Attraction', save_path=None):
+    """Plot the Region of Attraction mask.
+
+    Parameters
+    ----------
+    roa_mask : np.ndarray
+        Boolean ROA mask.
+    dem : np.ndarray, optional
+        Background DEM for context.
+    hazard_map : np.ndarray, optional
+        Background hazard map.
+    title : str
+        Figure title.
+    save_path : str, optional
+        Path to save the figure.
+    """
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    if hazard_map is not None:
+        ax.imshow(hazard_map, cmap=config.COLORMAP_HAZARD)
+    elif dem is not None:
+        hillshade = _compute_hillshade(dem)
+        ax.imshow(hillshade, cmap='gray')
+    else:
+        ax.set_facecolor('black')
+
+    # Overlay ROA mask
+    roa_display = np.ma.masked_where(~roa_mask, roa_mask)
+    ax.imshow(roa_display, cmap='autumn', alpha=0.6)
+
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.set_xlabel('Column')
+    ax.set_ylabel('Row')
+    fig.tight_layout()
+
+    _save_figure(fig, save_path, 'roa_mask')
+    return fig
+
+
 def plot_pareto_front(pareto_F, selected_idx=None,
                       title='Pareto Front', save_path=None):
     """Plot 3D Pareto front of multi-objective optimization.
@@ -820,7 +857,7 @@ def plot_dual_frequency(CPR_L, CPR_S,
 
 
 def generate_summary_figure(ice_prob, hazard, path, volume_results,
-                             title='LunarIce-360 Summary', save_path=None):
+                             roa_mask=None, title='LunarIce-360 Summary', save_path=None):
     """Generate master 2x2 summary figure.
 
     Parameters
@@ -833,6 +870,8 @@ def generate_summary_figure(ice_prob, hazard, path, volume_results,
         Traverse path as (row, col) waypoints.
     volume_results : dict
         Volume estimation results with 'volume_samples' or 'volumes'.
+    roa_mask : np.ndarray, optional
+        Region of Attraction mask.
     title : str
         Figure title.
     save_path : str, optional
@@ -864,6 +903,11 @@ def generate_summary_figure(ice_prob, hazard, path, volume_results,
     # Panel 3: Traverse Path
     ax3 = axes[1, 0]
     ax3.imshow(hazard, cmap=config.COLORMAP_HAZARD, alpha=0.5)
+    
+    if roa_mask is not None:
+        roa_display = np.ma.masked_where(~roa_mask, roa_mask)
+        ax3.imshow(roa_display, cmap='spring', alpha=0.4)
+        
     path_arr = np.array(path)
     ax3.plot(path_arr[:, 1], path_arr[:, 0], '-o', color='cyan',
              linewidth=2, markersize=4)

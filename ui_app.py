@@ -41,6 +41,10 @@ HTML = """
       <span id=\"status\">Idle</span>
     </div>
     <pre id=\"output\">No output yet.</pre>
+    <div id="results" style="display: none; margin-top: 2rem;">
+      <h2>Results Summary</h2>
+      <img src="/outputs/summary_figure.png" alt="Summary Figure" style="max-width: 100%; border-radius: 8px; border: 1px solid #334155;">
+    </div>
   </div>
 
   <script>
@@ -48,7 +52,10 @@ HTML = """
       const btn = document.getElementById('runBtn');
       const out = document.getElementById('output');
       const status = document.getElementById('status');
+      const resultsDiv = document.getElementById('results');
+      
       btn.disabled = true;
+      resultsDiv.style.display = 'none';
       status.textContent = 'Running...';
       out.textContent = 'Starting pipeline...';
       try {
@@ -67,6 +74,14 @@ HTML = """
             if (data.result && data.result.output) {
               out.textContent = data.result.output;
               status.textContent = data.running ? 'Running...' : (data.result.success ? 'Completed' : 'Failed');
+              
+              // Show results image if completed successfully
+              if (!data.running && data.result.success) {
+                  resultsDiv.style.display = 'block';
+                  // Add a cache-busting query parameter to force image reload
+                  const img = resultsDiv.querySelector('img');
+                  img.src = '/outputs/summary_figure.png?t=' + new Date().getTime();
+              }
             }
           } catch (e) {}
           btn.disabled = false;
@@ -85,7 +100,7 @@ def run_pipeline_background():
     RESULT = {"success": False, "output": "Pipeline started..."}
 
     try:
-        command = [sys.executable, '-m', 'lunarice360.demo_synthetic']
+        command = [sys.executable, '-m', 'BAHood.demo_synthetic']
         completed = subprocess.run(
             command,
             cwd=str(PARENT),
@@ -117,6 +132,20 @@ class LunarUIHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(json.dumps({'running': RUNNING, 'result': RESULT}).encode('utf-8'))
+        elif parsed.path.startswith('/outputs/'):
+            # Very simple static file serving for the outputs directory
+            filename = os.path.basename(parsed.path)
+            filepath = os.path.join(PARENT, 'outputs', filename)
+            if os.path.exists(filepath):
+                self.send_response(HTTPStatus.OK)
+                if filename.endswith('.png'):
+                    self.send_header('Content-Type', 'image/png')
+                self.end_headers()
+                with open(filepath, 'rb') as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_response(HTTPStatus.NOT_FOUND)
+                self.end_headers()
         else:
             self.send_response(HTTPStatus.NOT_FOUND)
             self.end_headers()
